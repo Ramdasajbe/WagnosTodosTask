@@ -1,7 +1,5 @@
 import {
-  Button,
   FlatList,
-  StyleSheet,
   Text,
   TouchableOpacity,
   useColorScheme,
