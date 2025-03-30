@@ -11,9 +11,11 @@ import React, {use, useEffect, useState, useNavigation} from 'react';
 import {Colors} from 'react-native/Libraries/NewAppScreen';
 import axios from 'axios';
 import TaskStyles from './Styles';
+import {useNetInfo} from '@react-native-community/netinfo';
+import {getData, storeData} from '../utils/storageUtils';
 const TodosList = ({navigation}) => {
   const isDarkMode = useColorScheme() === 'dark';
-
+  const {isConnected} = useNetInfo(); // Get network status
   const styles = TaskStyles(isDarkMode, Colors, Dimensions);
   const [allDetails, setallDetails] = useState({
     loading: true,
@@ -25,14 +27,9 @@ const TodosList = ({navigation}) => {
     completed: false,
     incompleted: false,
   });
-
+  const [filteredData, setFilteredData] = useState([]); // This will hold the filtered data
   const getAllTask = status => {
     setallDetails({loading: true, data: [], error: null});
-    setborderLine({
-      all: status === 'all',
-      completed: status === true,
-      incompleted: status === false,
-    });
 
     const apiUrl = 'https://jsonplaceholder.typicode.com/todos';
 
@@ -51,11 +48,10 @@ const TodosList = ({navigation}) => {
           if (response.data.length > 0) {
             setallDetails({
               loading: false,
-              data: response.data.filter(item =>
-                typeof status === 'boolean' ? item.completed === status : item,
-              ),
+              data: response.data,
               error: null,
             });
+            setFilteredData(response.data); // Initialize filtered data with all data
           } else {
             setallDetails({
               loading: false,
@@ -89,6 +85,47 @@ const TodosList = ({navigation}) => {
     };
   }, []);
 
+  useEffect(() => {
+    handleOfflineData('all');
+  }, [isConnected, allDetails.data]);
+
+  // Filter the data every time `status` or `allDetails.data` changes
+  const filterData = status => {
+    setborderLine({
+      all: status === 'all',
+      completed: status === true,
+      incompleted: status === false,
+    });
+    const filtered = allDetails.data.filter(item =>
+      typeof status === 'boolean' ? item.completed === status : item,
+    );
+    setFilteredData(filtered); // Update filtered data
+  };
+  const handleOfflineData = async () => {
+    if (!isConnected && allDetails.data.length === 0) {
+      const storedListData = await getData('allTodos');
+      if (storedListData && Array.isArray(storedListData)) {
+        setallDetails({
+          loading: false,
+          data: storedListData,
+          error: null,
+        });
+      } else {
+        setallDetails({
+          loading: false,
+          data: [],
+          error: 'No offline data found',
+        });
+      }
+    } else if (isConnected && allDetails.data.length > 0) {
+      // Store the fetched data in AsyncStorage when online
+      try {
+        await storeData('allTodos', allDetails.data);
+      } catch (error) {
+        console.error('Error storing data:', error);
+      }
+    }
+  };
   const renderItem = ({item}) => {
     return (
       <TouchableOpacity
@@ -129,11 +166,12 @@ const TodosList = ({navigation}) => {
       </View>
     );
   }
+
   return (
     <View style={styles.container}>
       <View style={styles.buttonView}>
         <TouchableOpacity
-          onPress={() => getAllTask('all')}
+          onPress={() => filterData('all')}
           style={[
             styles.button,
             {
@@ -169,7 +207,7 @@ const TodosList = ({navigation}) => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => getAllTask(true)}
+          onPress={() => filterData(true)}
           style={[
             styles.button,
             {
@@ -205,7 +243,7 @@ const TodosList = ({navigation}) => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => getAllTask(false)}
+          onPress={() => filterData(false)}
           style={[
             styles.button,
             {
@@ -243,7 +281,7 @@ const TodosList = ({navigation}) => {
 
       <FlatList
         style={styles.flatlistContainer}
-        data={allDetails.data}
+        data={filteredData}
         renderItem={renderItem}
         keyExtractor={item => item.id.toString()} // Ensure valid keyExtractor
       />
